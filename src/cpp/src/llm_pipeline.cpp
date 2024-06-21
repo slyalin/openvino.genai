@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <nlohmann/json.hpp>
 #include <openvino/openvino.hpp>
+#include <openvino/pass/stateful_to_stateless.hpp>
 #include "openvino/genai/generation_config.hpp"
 #include "openvino/genai/llm_pipeline.hpp"
 #include "utils.hpp"
@@ -73,9 +74,9 @@ ov::genai::EncodedResults multinominal_decoding(
 );
 
 EncodedResults beam_search(
-    ov::InferRequest& lm, 
-    ov::Tensor prompts, 
-    ov::Tensor attention_mask, 
+    ov::InferRequest& lm,
+    ov::Tensor prompts,
+    ov::Tensor attention_mask,
     GenerationConfig config
 );
 
@@ -113,7 +114,7 @@ LLMPipelineImplBase::LLMPipelineImplBase(const Tokenizer& tokenizer,
 class LLMPipelineImpl final : public LLMPipelineImplBase {
 public:
     ov::InferRequest m_model_runner;
-    
+
     bool is_chat_conversation = false;
     bool m_is_cache_empty = true;
     ChatHistory m_history;
@@ -134,7 +135,7 @@ public:
         const ov::genai::Tokenizer& tokenizer,
         const std::string& device,
         const ov::AnyMap& plugin_config
-    ): 
+    ):
         LLMPipelineImplBase(tokenizer, from_config_json_if_exists(model_path))
     {
         ov::Core core;
@@ -147,11 +148,11 @@ public:
     }
 
     LLMPipelineImpl(
-        const std::filesystem::path& model_path, 
-        const std::string& device, 
+        const std::filesystem::path& model_path,
+        const std::string& device,
         const ov::AnyMap& plugin_config
     ): LLMPipelineImpl{model_path, Tokenizer(model_path.string()), device, plugin_config} {}
-    
+
     DecodedResults generate(
         StringInputs inputs,
         OptionalGenerationConfig generation_config,
@@ -164,22 +165,22 @@ public:
             encoded_input = m_tokenizer.encode(*input_vector);
         } else if (auto input_prompt = std::get_if<std::string>(&inputs)) {
             std::string& prompt = *input_prompt;
-            
+
             if (is_chat_conversation) {
                 m_history.push_back({{"role", "user"}, {"content", prompt}});
                 constexpr bool add_generation_prompt = true;
                 auto new_templated_chat_history  = m_tokenizer.apply_chat_template(m_history, add_generation_prompt);
-                
+
                 prompt = new_templated_chat_history.substr(m_templated_chat_history.size());
                 m_templated_chat_history = new_templated_chat_history;
             }
-            
+
             encoded_input = m_tokenizer.encode(prompt);
         }
 
         auto encoded_results  = generate(encoded_input, config, streamer);
         DecodedResults decoded_results = {m_tokenizer.decode(encoded_results.tokens), encoded_results.scores};
-        
+
         if (is_chat_conversation) {
             // Tail of chat template is missing in KV cache.
             // Find the tail to concatenate it with the next input prompt.
@@ -187,7 +188,7 @@ public:
             m_templated_chat_history.append(answer);
             m_history.push_back({{"role", "assistant"}, {"content", answer}});
         }
-        
+
         return decoded_results;
     }
 
@@ -477,8 +478,8 @@ NPULLMPipelineImpl::NPULLMPipelineImpl(
     // (1) Read the template model and clone it
     auto kvcache_model = core.read_model(path / "openvino_model.xml");
     auto prefill_model = kvcache_model->clone();
-    // TODO: (2) Expose KV-cache input and output layers
-    // ov::pass::ExposeKVCacheFromModel().run_on_model(kvcache_model);
+    // (2) Expose KV-cache input and output layers
+    ov::pass::StatefulToStateless().run_on_model(kvcache_model);
     prefill_model->set_friendly_name(kvcache_model->get_friendly_name() + "_prefill");
     // (3) Reshape both models to static shape
     // FIXME: There must be better logic than just hardcoded values
