@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) try {
     using namespace ov::genai;
 
     Adapter adapter(adapter_path);
-    LLMPipeline pipe(model_path, device, adapters(adapter));    // register all required adapters here
+    LLMPipeline pipe(model_path, device, adapters(adapter, AdapterConfig::MODE_DYNAMIC));    // register all required adapters here
 
     std::cout << "Generate with LoRA adapter and alpha set to 0.75:" << std::endl;
     std::cout << pipe.generate(prompt, max_new_tokens(100), adapters(adapter, 0.75)) << std::endl;

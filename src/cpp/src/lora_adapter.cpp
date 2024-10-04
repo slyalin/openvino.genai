@@ -37,7 +37,7 @@ extern "C" {
 
 // If set to 1, the empty tensors will be used to switch LoRA adapter off.
 // FIXME: Fix the plugins and set to 1 permanently.
-#define EMPTY_TENSORS_SUPPORTED_IN_MATMUL 0
+#define EMPTY_TENSORS_SUPPORTED_IN_MATMUL 1
 
 // If set to 1, LoRA state tensors will have the original type of LoRA adapter come from safetensors file.
 // If there are multiple LoRA adapters are applied, then negotiation between them happens.
